@@ -6,7 +6,6 @@
 
 A PowerShell script that identifies applications and tools using Exchange Web Services (EWS) or on-premise Exchange as an SMTP relay. The script generates a detailed HTML report to help with migration planning and application inventory.
 
-![Sample Report](https://placeholder.svg?height=300&width=600&query=Sample+Exchange+EWS+Scanner+HTML+Report)
 
 ## 🚀 Features
 
