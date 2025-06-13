@@ -33,5 +33,20 @@ A PowerShell script that identifies applications and tools using Exchange Web Se
 
 Run the script from Exchange Management Shell:
 
-```powershell
+\`\`\`powershell
 .\Get-ExchangeUsageReport.ps1
+\`\`\`
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `-DaysToAnalyze` | Number of days of logs to analyze | 30 |
+| `-UseFileDialog` | Show a file dialog to choose where to save the report | $true |
+| `-OutputPath` | Path where the HTML report will be saved (if not using dialog) | Desktop |
+| `-IncludeMessageTracking` | Whether to include message tracking logs | $true |
+
+**Examples:**
+
+Save to a specific location without showing the file dialog:
+
+\`\`\`powershell
+.\Get-ExchangeUsageReport.ps1 -UseFileDialog $false -OutputPath "C:\Reports\EWSReport.html"
