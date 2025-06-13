@@ -1,0 +1,849 @@
+#region Description
+<#     
+.NOTES
+==============================================================================
+Created on:         2025/06/13
+Created by:         Drago Petrovic
+Organization:       MSB365.blog
+Filename:           Get-ExchangeUsageReport.ps1
+Current version:    V1.0     
+
+Find us on:
+* Website:         https://www.msb365.blog
+* Technet:         https://social.technet.microsoft.com/Profile/MSB365
+* LinkedIn:        https://www.linkedin.com/in/drago-petrovic/
+* MVP Profile:     https://mvp.microsoft.com/de-de/PublicProfile/5003446
+==============================================================================
+
+.SYNOPSIS
+    Identifies applications using EWS and SMTP relay on Exchange Server
+.DESCRIPTION
+    This script analyzes Exchange logs to identify applications and tools that are using
+    EWS (Exchange Web Services) or the on-premise Exchange as an SMTP relay.
+    It generates a comprehensive HTML report with details to assist in migration planning.
+.NOTES
+    Run this script on an on-premise Exchange server with appropriate permissions.
+.EXAMPLE
+    .\Get-ExchangeUsageReport.ps1
+.EXAMPLE
+    .\Get-ExchangeUsageReport.ps1 -IISLogPath "D:\IISLogs\W3SVC1"
+    .\Get-ExchangeUsageReport.ps1 -UseFileDialog $false -IISLogPath "D:\IISLogs\W3SVC1"
+
+.COPYRIGHT
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+===========================================================================
+.CHANGE LOG
+V1.00, 2025/06/13 - DrPe - Initial version
+
+
+
+--- keep it simple, but significant ---
+
+
+--- by MSB365 Blog ---
+
+#>
+#endregion
+##############################################################################################################
+[cmdletbinding()]
+param(
+[switch]$accepteula,
+[switch]$v)
+
+###############################################################################
+#Script Name variable
+$Scriptname = "Get EWS and SMTP usage Report"
+$RKEY = "MSB365_EWSandSMTPrelayReport"
+###############################################################################
+
+[void][System.Reflection.Assembly]::Load('System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a')
+[void][System.Reflection.Assembly]::Load('System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089')
+
+function ShowEULAPopup($mode)
+{
+    $EULA = New-Object -TypeName System.Windows.Forms.Form
+    $richTextBox1 = New-Object System.Windows.Forms.RichTextBox
+    $btnAcknowledge = New-Object System.Windows.Forms.Button
+    $btnCancel = New-Object System.Windows.Forms.Button
+
+    $EULA.SuspendLayout()
+    $EULA.Name = "MIT"
+    $EULA.Text = "$Scriptname - License Agreement"
+
+    $richTextBox1.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+    $richTextBox1.Location = New-Object System.Drawing.Point(12,12)
+    $richTextBox1.Name = "richTextBox1"
+    $richTextBox1.ScrollBars = [System.Windows.Forms.RichTextBoxScrollBars]::Vertical
+    $richTextBox1.Size = New-Object System.Drawing.Size(776, 397)
+    $richTextBox1.TabIndex = 0
+    $richTextBox1.ReadOnly=$True
+    $richTextBox1.Add_LinkClicked({Start-Process -FilePath $_.LinkText})
+    $richTextBox1.Rtf = @"
+{\rtf1\ansi\ansicpg1252\deff0\nouicompat{\fonttbl{\f0\fswiss\fprq2\fcharset0 Segoe UI;}{\f1\fnil\fcharset0 Calibri;}{\f2\fnil\fcharset0 Microsoft Sans Serif;}}
+{\colortbl ;\red0\green0\blue255;}
+{\*\generator Riched20 10.0.19041}{\*\mmathPr\mdispDef1\mwrapIndent1440 }\viewkind4\uc1
+\pard\widctlpar\f0\fs19\lang1033 MSB365 SOFTWARE MIT LICENSE\par
+Copyright (c) 2025 Drago Petrovic\par
+$Scriptname \par
+\par
+{\pict{\*\picprop}\wmetafile8\picw26\pich26\picwgoal32000\pichgoal15
+0100090000035000000000002700000000000400000003010800050000000b0200000000050000
+000c0202000200030000001e000400000007010400040000000701040027000000410b2000cc00
+010001000000000001000100000000002800000001000000010000000100010000000000000000
+000000000000000000000000000000000000000000ffffff00000000ff040000002701ffff0300
+00000000
+}These license terms are an agreement between you and MSB365 (or one of its affiliates). IF YOU COMPLY WITH THESE LICENSE TERMS, YOU HAVE THE RIGHTS BELOW. BY USING THE SOFTWARE, YOU ACCEPT THESE TERMS.\par
+\par
+MIT License\par
+{\pict{\*\picprop}\wmetafile8\picw26\pich26\picwgoal32000\pichgoal15
+0100090000035000000000002700000000000400000003010800050000000b0200000000050000
+000c0202000200030000001e000400000007010400040000000701040027000000410b2000cc00
+010001000000000001000100000000002800000001000000010000000100010000000000000000
+000000000000000000000000000000000000000000ffffff00000000ff040000002701ffff0300
+00000000
+}\par
+\pard
+{\pntext\f0 1.\tab}{\*\pn\pnlvlbody\pnf0\pnindent0\pnstart1\pndec{\pntxta.}}
+\fi-360\li360 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: \par
+\pard\widctlpar\par
+\pard\widctlpar\li360 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\par
+\par
+\pard\widctlpar\fi-360\li360 2.\tab THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. \par
+\pard\widctlpar\par
+\pard\widctlpar\fi-360\li360 3.\tab IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. \par
+\pard\widctlpar\par
+\pard\widctlpar\fi-360\li360 4.\tab DISCLAIMER OF WARRANTY. THE SOFTWARE IS PROVIDED \ldblquote AS IS,\rdblquote  WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL MSB365 OR ITS LICENSORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\par
+\pard\widctlpar\par
+\pard\widctlpar\fi-360\li360\qj 5.\tab LIMITATION ON AND EXCLUSION OF DAMAGES. IF YOU HAVE ANY BASIS FOR RECOVERING DAMAGES DESPITE THE PRECEDING DISCLAIMER OF WARRANTY, YOU CAN RECOVER FROM MICROSOFT AND ITS SUPPLIERS ONLY DIRECT DAMAGES UP TO U.S. $1.00. YOU CANNOT RECOVER ANY OTHER DAMAGES, INCLUDING CONSEQUENTIAL, LOST PROFITS, SPECIAL, INDIRECT, OR INCIDENTAL DAMAGES. This limitation applies to (i) anything related to the Software, services, content (including code) on third party Internet sites, or third party applications; and (ii) claims for breach of contract, warranty, guarantee, or condition; strict liability, negligence, or other tort; or any other claim; in each case to the extent permitted by applicable law. It also applies even if MSB365 knew or should have known about the possibility of the damages. The above limitation or exclusion may not apply to you because your state, province, or country may not allow the exclusion or limitation of incidental, consequential, or other damages.\par
+\pard\widctlpar\par
+\pard\widctlpar\fi-360\li360\qj 6.\tab ENTIRE AGREEMENT. This agreement, and any other terms MSB365 may provide for supplements, updates, or third-party applications, is the entire agreement for the software.\par
+\pard\widctlpar\qj\par
+\pard\widctlpar\fi-360\li360\qj 7.\tab A complete script documentation can be found on the website https://www.msb365.blog.\par
+\pard\widctlpar\par
+\pard\sa200\sl276\slmult1\f1\fs22\lang9\par
+\pard\f2\fs17\lang2057\par
+}
+"@
+    $richTextBox1.BackColor = [System.Drawing.Color]::White
+    $btnAcknowledge.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
+    $btnAcknowledge.Location = New-Object System.Drawing.Point(544, 415)
+    $btnAcknowledge.Name = "btnAcknowledge";
+    $btnAcknowledge.Size = New-Object System.Drawing.Size(119, 23)
+    $btnAcknowledge.TabIndex = 1
+    $btnAcknowledge.Text = "Accept"
+    $btnAcknowledge.UseVisualStyleBackColor = $True
+    $btnAcknowledge.Add_Click({$EULA.DialogResult=[System.Windows.Forms.DialogResult]::Yes})
+
+    $btnCancel.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
+    $btnCancel.Location = New-Object System.Drawing.Point(669, 415)
+    $btnCancel.Name = "btnCancel"
+    $btnCancel.Size = New-Object System.Drawing.Size(119, 23)
+    $btnCancel.TabIndex = 2
+    if($mode -ne 0)
+    {
+   $btnCancel.Text = "Close"
+    }
+    else
+    {
+   $btnCancel.Text = "Decline"
+    }
+    $btnCancel.UseVisualStyleBackColor = $True
+    $btnCancel.Add_Click({$EULA.DialogResult=[System.Windows.Forms.DialogResult]::No})
+
+    $EULA.AutoScaleDimensions = New-Object System.Drawing.SizeF(6.0, 13.0)
+    $EULA.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Font
+    $EULA.ClientSize = New-Object System.Drawing.Size(800, 450)
+    $EULA.Controls.Add($btnCancel)
+    $EULA.Controls.Add($richTextBox1)
+    if($mode -ne 0)
+    {
+   $EULA.AcceptButton=$btnCancel
+    }
+    else
+    {
+        $EULA.Controls.Add($btnAcknowledge)
+   $EULA.AcceptButton=$btnAcknowledge
+        $EULA.CancelButton=$btnCancel
+    }
+    $EULA.ResumeLayout($false)
+    $EULA.Size = New-Object System.Drawing.Size(800, 650)
+
+    Return ($EULA.ShowDialog())
+}
+
+function ShowEULAIfNeeded($toolName, $mode)
+{
+$eulaRegPath = "HKCU:Software\Microsoft\$RKEY"
+$eulaAccepted = "No"
+$eulaValue = $toolName + " EULA Accepted"
+if(Test-Path $eulaRegPath)
+{
+$eulaRegKey = Get-Item $eulaRegPath
+$eulaAccepted = $eulaRegKey.GetValue($eulaValue, "No")
+}
+else
+{
+$eulaRegKey = New-Item $eulaRegPath
+}
+if($mode -eq 2) # silent accept
+{
+$eulaAccepted = "Yes"
+        $ignore = New-ItemProperty -Path $eulaRegPath -Name $eulaValue -Value $eulaAccepted -PropertyType String -Force
+}
+else
+{
+if($eulaAccepted -eq "No")
+{
+$eulaAccepted = ShowEULAPopup($mode)
+if($eulaAccepted -eq [System.Windows.Forms.DialogResult]::Yes)
+{
+        $eulaAccepted = "Yes"
+        $ignore = New-ItemProperty -Path $eulaRegPath -Name $eulaValue -Value $eulaAccepted -PropertyType String -Force
+}
+}
+}
+return $eulaAccepted
+}
+
+if ($accepteula)
+    {
+         ShowEULAIfNeeded "DS Authentication Scripts:" 2
+         "EULA Accepted"
+    }
+else
+    {
+        $eulaAccepted = ShowEULAIfNeeded "DS Authentication Scripts:" 0
+        if($eulaAccepted -ne "Yes")
+            {
+                "EULA Declined"
+                exit
+            }
+         "EULA Accepted"
+    }
+###############################################################################
+write-host "  _           __  __ ___ ___   ____  __ ___  " -ForegroundColor Yellow
+write-host " | |__ _  _  |  \/  / __| _ ) |__ / / /| __| " -ForegroundColor Yellow
+write-host " | '_ \ || | | |\/| \__ \ _ \  |_ \/ _ \__ \ " -ForegroundColor Yellow
+write-host " |_.__/\_, | |_|  |_|___/___/ |___/\___/___/ " -ForegroundColor Yellow
+write-host "       |__/                                  " -ForegroundColor Yellow
+Start-Sleep -s 2
+write-host ""                                                                                   
+write-host ""
+write-host ""
+write-host ""
+###############################################################################
+
+
+#----------------------------------------------------------------------------------------
+
+# Script parameters
+param(
+    [Parameter(Mandatory=$false)]
+    [switch]$UseFileDialog = $true,
+    
+    [Parameter(Mandatory=$false)]
+    [int]$DaysToAnalyze = 30,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$OutputPath = "$env:USERPROFILE\Desktop\ExchangeUsageReport.html",
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$IncludeMessageTracking = $true,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$IISLogPath
+)
+
+# Add this function at the beginning of the script
+function Start-ScriptBlock {
+    param (
+        [Parameter(Mandatory=$true)]
+        [scriptblock]$ScriptBlock,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$TimeoutSeconds = 300
+    )
+    
+    $job = Start-Job -ScriptBlock $ScriptBlock
+    
+    $completed = Wait-Job -Job $job -Timeout $TimeoutSeconds
+    
+    if ($completed -eq $null) {
+        Write-ColorOutput Red "Operation timed out after $TimeoutSeconds seconds"
+        Stop-Job -Job $job
+        Remove-Job -Job $job -Force
+        return $null
+    } else {
+        $result = Receive-Job -Job $job
+        Remove-Job -Job $job
+        return $result
+    }
+}
+
+# Add Windows Forms assembly for file dialog
+Add-Type -AssemblyName System.Windows.Forms
+
+# Function to write colored output
+function Write-ColorOutput($ForegroundColor) {
+    $fc = $host.UI.RawUI.ForegroundColor
+    $host.UI.RawUI.ForegroundColor = $ForegroundColor
+    if ($args) {
+        Write-Output $args
+    }
+    else {
+        $input | Write-Output
+    }
+    $host.UI.RawUI.ForegroundColor = $fc
+}
+
+# Check if running on Exchange server
+function Test-ExchangeServer {
+    try {
+        $exchangeInstallPath = (Get-ItemProperty -Path Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ExchangeServer\v15\Setup -ErrorAction Stop).MsiInstallPath
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to get EWS usage data
+function Get-EWSUsage {
+    Write-ColorOutput Green "Collecting EWS usage data..."
+    
+    try {
+        $startDate = (Get-Date).AddDays(-$DaysToAnalyze)
+        Write-ColorOutput Yellow "Analyzing logs from $startDate to present"
+        $ewsData = @()
+    
+    # Try to get IIS log path from configuration
+    if ($IISLogPath) {
+        $iisLogPath = $IISLogPath
+        Write-ColorOutput Yellow "Using specified IIS log path: $iisLogPath"
+    } else {
+        try {
+            # Import IIS module if available
+            if (Get-Module -ListAvailable -Name WebAdministration) {
+                Import-Module WebAdministration -ErrorAction SilentlyContinue
+                $iisLogPath = (Get-ItemProperty 'IIS:\Sites\Default Web Site' -Name logFile.directory).Value
+                # Convert from IIS format if needed
+                if ($iisLogPath -like "%*%") {
+                    $iisLogPath = $iisLogPath -replace "%SystemDrive%", $env:SystemDrive
+                    $iisLogPath = $iisLogPath -replace "%windir%", $env:windir
+                }
+                $iisLogPath = Join-Path $iisLogPath "W3SVC1"
+            } else {
+                # Fallback to default path
+                $iisLogPath = "$env:SystemDrive\inetpub\logs\LogFiles\W3SVC1"
+            }
+        } catch {
+            # Fallback to default path
+            $iisLogPath = "$env:SystemDrive\inetpub\logs\LogFiles\W3SVC1"
+            Write-ColorOutput Yellow "Could not determine IIS log path from configuration. Using default: $iisLogPath"
+        }
+    }
+
+    # If path doesn't exist, prompt user for the correct path
+    if (-not (Test-Path $iisLogPath)) {
+        Write-ColorOutput Yellow "IIS logs not found at: $iisLogPath"
+        
+        if ($UseFileDialog) {
+            Write-ColorOutput Yellow "Please select the folder containing IIS logs (W3SVC1 folder)"
+            $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+            $folderBrowser.Description = "Select IIS Logs Folder (W3SVC1)"
+            $folderBrowser.ShowNewFolderButton = $false
+            
+            if ($folderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $iisLogPath = $folderBrowser.SelectedPath
+                Write-ColorOutput Green "Using IIS logs from: $iisLogPath"
+            } else {
+                Write-ColorOutput Yellow "No IIS log path selected. EWS data from IIS logs will not be included."
+                $iisLogPath = $null
+            }
+        } else {
+            Write-ColorOutput Yellow "EWS data from IIS logs will not be included. Use -UseFileDialog to select the path."
+            $iisLogPath = $null
+        }
+    }
+
+    if ($iisLogPath) {
+        $logFiles = Get-ChildItem -Path $iisLogPath -Filter "*.log" | Where-Object { $_.LastWriteTime -ge $startDate }
+        $totalFiles = $logFiles.Count
+        $currentFile = 0
+        
+        Write-ColorOutput Yellow "Found $totalFiles IIS log files to process"
+        
+        foreach ($logFile in $logFiles) {
+            $currentFile++
+            Write-Progress -Activity "Processing IIS Logs" -Status "File $currentFile of $totalFiles" -PercentComplete (($currentFile / $totalFiles) * 100)
+            Write-ColorOutput Yellow "Processing IIS log: $($logFile.Name)"
+            
+            $logContent = Get-Content $logFile.FullName | Where-Object { $_ -match "/EWS/" -and $_ -notmatch "Mozilla" }
+            
+            foreach ($line in $logContent) {
+                if ($line.StartsWith("#")) { continue }
+                
+                $fields = $line -split ' '
+                if ($fields.Count -ge 12) {
+                    $dateTime = [DateTime]::ParseExact($fields[0] + " " + $fields[1], "yyyy-MM-dd HH:mm:ss", $null)
+                    $clientIP = $fields[8]
+                    $userAgent = ($line -split "Mozilla")[0]
+                    if ($userAgent -match "User-Agent: ([^;]+)") {
+                        $userAgent = $matches[1]
+                    }
+                    else {
+                        $userAgent = "Unknown"
+                    }
+                    
+                    $method = $fields[3]
+                    $endpoint = $fields[4]
+                    $statusCode = $fields[11]
+                    
+                    $ewsData += [PSCustomObject]@{
+                        DateTime = $dateTime
+                        ClientIP = $clientIP
+                        UserAgent = $userAgent
+                        Method = $method
+                        Endpoint = $endpoint
+                        StatusCode = $statusCode
+                        Type = "EWS"
+                    }
+                }
+            }
+        }
+    }
+    else {
+        Write-ColorOutput Red "IIS logs not found at expected path: $iisLogPath"
+    }
+    
+    # Get EWS data from Exchange logs
+    try {
+        $ewsLogs = Get-EventLog -LogName "MSExchange Web Services" -After $startDate -ErrorAction SilentlyContinue
+        
+        foreach ($log in $ewsLogs) {
+            if ($log.Message -match "Client=([^,]+)") {
+                $clientIP = $matches[1]
+                
+                $userAgent = "Unknown"
+                if ($log.Message -match "UserAgent=([^,]+)") {
+                    $userAgent = $matches[1]
+                }
+                
+                $ewsData += [PSCustomObject]@{
+                    DateTime = $log.TimeGenerated
+                    ClientIP = $clientIP
+                    UserAgent = $userAgent
+                    Method = "N/A"
+                    Endpoint = "N/A"
+                    StatusCode = "N/A"
+                    Type = "EWS"
+                }
+            }
+        }
+    }
+    catch {
+        Write-ColorOutput Red "Error accessing Exchange Web Services logs: $_"
+    }
+    
+    } catch {
+        Write-ColorOutput Red "Error in Get-EWSUsage function: $_"
+        Write-ColorOutput Red $_.ScriptStackTrace
+    }
+    
+    Write-ColorOutput Yellow "EWS data collection complete. Found $($ewsData.Count) entries."
+    return $ewsData
+}
+
+# Function to get SMTP relay usage data
+function Get-SMTPRelayUsage {
+    Write-ColorOutput Green "Collecting SMTP relay usage data..."
+    
+    try {
+        $startDate = (Get-Date).AddDays(-$DaysToAnalyze)
+        Write-ColorOutput Yellow "Analyzing logs from $startDate to present"
+        $smtpData = @()
+    
+    # Get data from message tracking logs
+    if ($IncludeMessageTracking) {
+        try {
+            $trackingLogs = Get-MessageTrackingLog -Start $startDate -EventID "RECEIVE" -ResultSize Unlimited
+            
+            foreach ($log in $trackingLogs) {
+                # Filter for likely relay scenarios (non-Exchange servers sending mail)
+                if ($log.Source -eq "SMTP" -and $log.SourceContext -notmatch "MSExchange") {
+                    $smtpData += [PSCustomObject]@{
+                        DateTime = $log.Timestamp
+                        ClientIP = $log.ClientIp
+                        UserAgent = "N/A"
+                        Sender = $log.Sender
+                        Recipients = ($log.Recipients -join ", ")
+                        Server = $log.ServerHostname
+                        Type = "SMTP Relay"
+                        AuthenticationType = $log.ConnectorId
+                    }
+                }
+            }
+        }
+        catch {
+            Write-ColorOutput Red "Error accessing message tracking logs: $_"
+        }
+    }
+    
+    # Get data from protocol logs
+    $protocolLogPath = "$env:ExchangeInstallPath\TransportRoles\Logs\ProtocolLog\SmtpReceive"
+    if (Test-Path $protocolLogPath) {
+        $logFiles = Get-ChildItem -Path $protocolLogPath -Filter "*.log" -Recurse | Where-Object { $_.LastWriteTime -ge $startDate }
+        
+        foreach ($logFile in $logFiles) {
+            Write-ColorOutput Yellow "Processing SMTP protocol log: $($logFile.Name)"
+            
+            $logContent = Import-Csv $logFile.FullName -Delimiter ","
+            
+            foreach ($entry in $logContent) {
+                if ($entry.SessionId -and $entry.RemoteEndpoint) {
+                    $clientIP = ($entry.RemoteEndpoint -split ":")[0]
+                    
+                    $smtpData += [PSCustomObject]@{
+                        DateTime = [DateTime]::Parse($entry.DateTime)
+                        ClientIP = $clientIP
+                        UserAgent = "N/A"
+                        Sender = $entry.From
+                        Recipients = $entry.To
+                        Server = $entry.LocalEndpoint
+                        Type = "SMTP Relay"
+                        AuthenticationType = $entry.AuthMechanism
+                    }
+                }
+            }
+        }
+    }
+    else {
+        Write-ColorOutput Red "SMTP protocol logs not found at expected path: $protocolLogPath"
+    }
+    
+    } catch {
+        Write-ColorOutput Red "Error in Get-SMTPRelayUsage function: $_"
+        Write-ColorOutput Red $_.ScriptStackTrace
+    }
+    
+    Write-ColorOutput Yellow "SMTP relay data collection complete. Found $($smtpData.Count) entries."
+    return $smtpData
+}
+
+# Function to generate HTML report
+function Generate-HTMLReport {
+    param (
+        [Parameter(Mandatory=$true)]
+        [array]$EWSData,
+        
+        [Parameter(Mandatory=$true)]
+        [array]$SMTPData,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$OutputPath,
+        
+        [Parameter(Mandatory=$false)]
+        [bool]$UseFileDialog = $true
+    )
+    
+    Write-ColorOutput Green "Generating HTML report..."
+    
+    # Group data by client IP and application
+    $ewsApps = $EWSData | Group-Object -Property ClientIP, UserAgent
+    $smtpApps = $SMTPData | Group-Object -Property ClientIP
+    
+    # Create HTML header
+    $html = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exchange Usage Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #0078d4;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .summary {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #0078d4;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin-bottom: 30px;
+        }
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+        }
+        .tab button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: 0.3s;
+        }
+        .tab button:hover {
+            background-color: #ddd;
+        }
+        .tab button.active {
+            background-color: #0078d4;
+            color: white;
+        }
+        .tabcontent {
+            display: none;
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            border-top: none;
+        }
+        .visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Exchange Usage Report</h1>
+        <div class="summary">
+            <h2>Summary</h2>
+            <p>Report generated on: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")</p>
+            <p>Server: $env:COMPUTERNAME</p>
+            <p>Analysis period: Last $DaysToAnalyze days</p>
+            <p>EWS Applications detected: $($ewsApps.Count)</p>
+            <p>SMTP Relay Applications detected: $($smtpApps.Count)</p>
+        </div>
+        
+        <div class="tab">
+            <button class="tablinks active" onclick="openTab(event, 'EWSTab')">EWS Applications</button>
+            <button class="tablinks" onclick="openTab(event, 'SMTPTab')">SMTP Relay Applications</button>
+        </div>
+"@
+
+    # EWS Applications Tab
+    $html += @"
+        <div id="EWSTab" class="tabcontent visible">
+            <div class="section">
+                <h2>EWS Applications</h2>
+                <table>
+                    <tr>
+                        <th>Client IP</th>
+                        <th>User Agent</th>
+                        <th>First Seen</th>
+                        <th>Last Seen</th>
+                        <th>Request Count</th>
+                        <th>Common Endpoints</th>
+                    </tr>
+"@
+
+    foreach ($app in $ewsApps) {
+        $clientIP = ($app.Name -split ", ")[0]
+        $userAgent = ($app.Name -split ", ")[1]
+        $firstSeen = ($app.Group | Sort-Object DateTime | Select-Object -First 1).DateTime
+        $lastSeen = ($app.Group | Sort-Object DateTime -Descending | Select-Object -First 1).DateTime
+        $requestCount = $app.Count
+        $commonEndpoints = $app.Group | Group-Object -Property Endpoint | Sort-Object Count -Descending | Select-Object -First 3 | ForEach-Object { $_.Name }
+        
+        $html += @"
+                    <tr>
+                        <td>$clientIP</td>
+                        <td>$userAgent</td>
+                        <td>$firstSeen</td>
+                        <td>$lastSeen</td>
+                        <td>$requestCount</td>
+                        <td>$(($commonEndpoints -join "<br>"))</td>
+                    </tr>
+"@
+    }
+
+    $html += @"
+                </table>
+            </div>
+        </div>
+"@
+
+    # SMTP Relay Applications Tab
+    $html += @"
+        <div id="SMTPTab" class="tabcontent">
+            <div class="section">
+                <h2>SMTP Relay Applications</h2>
+                <table>
+                    <tr>
+                        <th>Client IP</th>
+                        <th>First Seen</th>
+                        <th>Last Seen</th>
+                        <th>Message Count</th>
+                        <th>Common Senders</th>
+                        <th>Authentication Type</th>
+                    </tr>
+"@
+
+    foreach ($app in $smtpApps) {
+        $clientIP = $app.Name
+        $firstSeen = ($app.Group | Sort-Object DateTime | Select-Object -First 1).DateTime
+        $lastSeen = ($app.Group | Sort-Object DateTime -Descending | Select-Object -First 1).DateTime
+        $messageCount = $app.Count
+        $commonSenders = $app.Group | Group-Object -Property Sender | Sort-Object Count -Descending | Select-Object -First 3 | ForEach-Object { $_.Name }
+        $authType = ($app.Group | Group-Object -Property AuthenticationType | Sort-Object Count -Descending | Select-Object -First 1).Name
+        
+        $html += @"
+                    <tr>
+                        <td>$clientIP</td>
+                        <td>$firstSeen</td>
+                        <td>$lastSeen</td>
+                        <td>$messageCount</td>
+                        <td>$(($commonSenders -join "<br>"))</td>
+                        <td>$authType</td>
+                    </tr>
+"@
+    }
+
+    $html += @"
+                </table>
+            </div>
+        </div>
+"@
+
+    # Add JavaScript for tab functionality
+    $html += @"
+        <script>
+            function openTab(evt, tabName) {
+                var i, tabcontent, tablinks;
+                
+                tabcontent = document.getElementsByClassName("tabcontent");
+                for (i = 0; i < tabcontent.length; i++) {
+                    tabcontent[i].style.display = "none";
+                    tabcontent[i].classList.remove("visible");
+                }
+                
+                tablinks = document.getElementsByClassName("tablinks");
+                for (i = 0; i < tablinks.length; i++) {
+                    tablinks[i].className = tablinks[i].className.replace(" active", "");
+                }
+                
+                document.getElementById(tabName).style.display = "block";
+                document.getElementById(tabName).classList.add("visible");
+                evt.currentTarget.className += " active";
+            }
+        </script>
+    </div>
+</body>
+</html>
+"@
+
+    # Save HTML report
+    if ($UseFileDialog) {
+        $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+        $saveFileDialog.Filter = "HTML files (*.html)|*.html|All files (*.*)|*.*"
+        $saveFileDialog.Title = "Save Exchange Usage Report"
+        $saveFileDialog.FileName = "ExchangeUsageReport.html"
+        $saveFileDialog.InitialDirectory = [System.IO.Path]::GetDirectoryName($OutputPath)
+        
+        if ($saveFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $OutputPath = $saveFileDialog.FileName
+            $html | Out-File -FilePath $OutputPath -Encoding UTF8
+            Write-ColorOutput Green "HTML report generated successfully at: $OutputPath"
+        } else {
+            Write-ColorOutput Yellow "Report generation cancelled by user."
+            return
+        }
+    } else {
+        $html | Out-File -FilePath $OutputPath -Encoding UTF8
+        Write-ColorOutput Green "HTML report generated successfully at: $OutputPath"
+    }
+}
+
+# Main script execution
+Clear-Host
+Write-ColorOutput Cyan "Exchange EWS and SMTP Relay Usage Identification Script"
+Write-ColorOutput Cyan "======================================================="
+
+# Check if running on Exchange server
+if (-not (Test-ExchangeServer)) {
+    Write-ColorOutput Red "This script should be run on an Exchange server. Exchange installation not detected."
+    exit
+}
+
+# Load Exchange PowerShell modules
+Write-ColorOutput Yellow "Loading Exchange PowerShell modules..."
+try {
+    Add-PSSnapin Microsoft.Exchange.Management.PowerShell.SnapIn -ErrorAction SilentlyContinue
+    Write-ColorOutput Green "Exchange PowerShell modules... Done"
+} catch {
+    Write-ColorOutput Red "Failed to load Exchange PowerShell modules: $_"
+    exit
+}
+
+# Add more verbose logging
+Write-ColorOutput Yellow "Exchange modules loaded successfully."
+Write-ColorOutput Yellow "Starting to collect EWS usage data..."
+
+# Collect data
+Write-ColorOutput Yellow "Starting data collection process..."
+try {
+    Write-ColorOutput Yellow "Collecting EWS usage data..."
+    $ewsData = Get-EWSUsage
+    Write-ColorOutput Yellow "Collecting SMTP relay usage data..."
+    $smtpData = Get-SMTPRelayUsage
+} catch {
+    Write-ColorOutput Red "Error during data collection: $_"
+    Write-ColorOutput Red $_.ScriptStackTrace
+}
+
+# Generate report
+Write-ColorOutput Yellow "Starting report generation..."
+try {
+    Generate-HTMLReport -EWSData $ewsData -SMTPData $smtpData -OutputPath $OutputPath -UseFileDialog:$UseFileDialog
+} catch {
+    Write-ColorOutput Red "Error during report generation: $_"
+    Write-ColorOutput Red $_.ScriptStackTrace
+}
+
+Write-ColorOutput Green "Script execution completed."
+if (Test-Path $OutputPath) {
+    Write-ColorOutput Green "Open the HTML report at: $OutputPath"
+}
