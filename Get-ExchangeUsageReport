@@ -53,10 +53,31 @@ V1.00, 2025/06/13 - DrPe - Initial version
 #>
 #endregion
 ##############################################################################################################
-[cmdletbinding()]
+# Script parameters
 param(
-[switch]$accepteula,
-[switch]$v)
+    [cmdletbinding()]
+
+    [Parameter(Mandatory=$false)]
+    [switch]$accepteula,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$v,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$UseFileDialog,
+    
+    [Parameter(Mandatory=$false)]
+    [int]$DaysToAnalyze = 30,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$OutputPath = "$env:USERPROFILE\Desktop\ExchangeUsageReport.html",
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$IncludeMessageTracking,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$IISLogPath
+)
 
 ###############################################################################
 #Script Name variable
@@ -243,24 +264,6 @@ write-host ""
 
 
 #----------------------------------------------------------------------------------------
-
-# Script parameters
-param(
-    [Parameter(Mandatory=$false)]
-    [switch]$UseFileDialog = $true,
-    
-    [Parameter(Mandatory=$false)]
-    [int]$DaysToAnalyze = 30,
-    
-    [Parameter(Mandatory=$false)]
-    [string]$OutputPath = "$env:USERPROFILE\Desktop\ExchangeUsageReport.html",
-    
-    [Parameter(Mandatory=$false)]
-    [switch]$IncludeMessageTracking = $true,
-    
-    [Parameter(Mandatory=$false)]
-    [string]$IISLogPath
-)
 
 # Add this function at the beginning of the script
 function Start-ScriptBlock {
